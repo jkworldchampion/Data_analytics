@@ -78,13 +78,22 @@ plot(multi_linear_regression, 4) # 16번, 42번, 61번의 자료가 예측치에
 library(lmtest) 
 dwtest(multi_linear_regression)
 
-
-
-
-
 #회귀 다시 구하기
 df_plus = df_plus[, -7]
 df_plus$mid_age = as.numeric(df_plus$mid_age)
 null = lm(Score ~ 1, data = df_plus)
 multi_linear_regression_plus = lm(Score ~ ., data = df_plus)
 front_model_plus = step(null, scope=list(lower=null, upper=multi_linear_regression_plus), direction="forward")
+
+# 특정 변수를 추가해 회귀선의 R^2값을 키워볼 것이다.
+data_3rd = read.csv("population_by_country_2020.csv") # 데이터 불러오기
+data_3rd = data_3rd[, c(1, 9)] # 국가 이름과 국가별 나이의 중간 값을 가져온다.
+colnames(data_3rd) = c("country", "mid_age")
+df_plus = inner_join(df, data_3rd, by = 'country') # 병합
+
+#회귀 다시 구하기
+df_plus = df_plus[, -7]
+df_plus$mid_age = as.numeric(df_plus$mid_age)
+null_plus = lm(Score ~ 1, data = df_plus)
+multi_linear_regression_plus = lm(Score ~ ., data = df_plus)
+front_model_plus = step(null_plus, scope=list(lower=null_plus, upper=multi_linear_regression_plus), direction="forward")
