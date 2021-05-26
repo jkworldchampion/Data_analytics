@@ -65,3 +65,26 @@ plot_model(multi_linear_regression, type = "est", wrap.labels=5)
 plot_model(multi_linear_regression, type = "std", sort.est = T, wrap.labels=5)
 
 plot_model(multi_linear_regression, type = "diag")
+
+plot(multi_linear_regression, 1) # 모형의 선형성이 인정됨.
+
+plot(multi_linear_regression, 2) # 잔차의 정규성이 검증됨.
+shapiro.test(multi_linear_regression$residuals) # 샤피로 테스트로 p값이 0.89이니 정규성 가정 만족.
+
+plot(multi_linear_regression, 3) # 약간 아쉽지만 잔차의 등분산성이 만족.
+
+plot(multi_linear_regression, 4) # 16번, 42번, 61번의 자료가 예측치에 비해 특히 벗이난다.
+
+library(lmtest) 
+dwtest(multi_linear_regression)
+
+
+
+
+
+#회귀 다시 구하기
+df_plus = df_plus[, -7]
+df_plus$mid_age = as.numeric(df_plus$mid_age)
+null = lm(Score ~ 1, data = df_plus)
+multi_linear_regression_plus = lm(Score ~ ., data = df_plus)
+front_model_plus = step(null, scope=list(lower=null, upper=multi_linear_regression_plus), direction="forward")
