@@ -97,3 +97,5 @@ df_plus$mid_age = as.numeric(df_plus$mid_age)
 null_plus = lm(Score ~ 1, data = df_plus)
 multi_linear_regression_plus = lm(Score ~ ., data = df_plus)
 front_model_plus = step(null_plus, scope=list(lower=null_plus, upper=multi_linear_regression_plus), direction="forward")
+
+

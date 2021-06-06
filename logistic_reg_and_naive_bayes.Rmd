@@ -1,0 +1,138 @@
+---
+title: "logistic_regression_and_naive_bayes"
+author: "juhwan"
+date: "6/6/2021"
+output: html_document
+---
+# 서론  
+우리는 통신회사의 고객 이탈 데이터를 가지고, 로지스틱 회귀와 나이브 베이즈 분류를 이용해 이탈 고객을 예측해 보고자 한다.
+
+# 본론
+### 데이터 전처리  
+데이터를 불러오고, 종속변수의 값을 0과 1로 변환시킨다.  
+이 때 Yes는 1로, No는 0으로 분류했다.
+```{r, include=F}
+library(caret)
+library(Epi)
+library(descr)
+library(e1071)
+```
+
+
+```{r}
+df = read.csv("WA_Fn-UseC_-Telco-Customer-Churn.csv")
+df$Churn = ifelse(df$Churn == 'Yes', 1, 0)
+```
+
+```{r}
+df = df[,-1]        # 고객 아이디는 필요가 없다.
+df = na.omit(df)    # NA값이 있는 고객을 모두 없앤다.
+head(df)             # 데이터를 확인한다. 
+```
+
+### Logistic regression    
+#### 모델 생성
+```{r}
+logreg1 = glm(Churn ~ ., family = binomial, data = df)  # 전체 값으로 회귀식을 뽑는다.  
+summary(logreg1)      # 유의미한 값을 찾는다.
+
+# 사용할 변수는 별 두 개 이상 기준으로 했다.
+# tenure, Contract, PaperlessBilling, TotalCharges
+logreg1Null = glm(Churn ~ 1, family = binomial, data = df) # 가장 기초의 회귀선을 뽑는다.
+anova(logreg1Null, logreg1, test = 'LRT')                  # 모델을 서로 비교한다. 
+# P 값을 보면 우리의 회귀식이 확실히 더 잘 설명한다. (의미가 있다.)
+
+# 아까 뽑아준 유의미한 변수들로 독립변수를 선택한다.
+logreg1_Modify = glm(Churn ~ tenure + Contract + PaperlessBilling + TotalCharges, family = binomial, data = df)
+anova(logreg1Null, logreg1_Modify, test = 'LRT')  # 아까 만든 NULL모델과 비교한다. 
+
+coef(logreg1_Modify)  # 계수를 가져와 본다. 
+exp(coef(logreg1_Modify)) # 'odds가 이 숫자배수 만큼 증가함'
+```
+부분 결론 : 즉 tenure이 1증가 할때 odds는 0.9배 됨, Contract가 One year는 odds가 0.3배가 됨, Contract가 Two year는 odds가 0.1배가 됨, PaperlessBilling이 Yes면 odds가 2배가 됨, TotalCharges는 1증가할 때 odds가 1.0007배 됨.
+
+#### 모델 성능 평가  
+```{r}
+graph1 = ROC(form = Churn ~ tenure + Contract + PaperlessBilling + TotalCharges, data = df, plot = 'ROC')
+graph1$res[round(graph1$res$lr.eta, 3) == 0.313,]  # 3번째 값이 가장 .313에 가깝다.
+graph1$AUC   # 그래프를 적분한 값, 즉 면적 값이다. 여기서 이 값은 분류기의 정확도를 의미한다. 
+
+confusionMatrix(
+  as.factor(ifelse(predict(logreg1_Modify, type = "response")>0.313,1,0)),
+  as.factor(logreg1_Modify$y),
+  positive = '1')
+
+logreg1_Modify_F1 = 2*0.8111*0.4906 /(0.8111+0.4906)   # 0.611 
+logreg1_Modify_F1   # F1 값은 Sensitivity와 Pos Pred Value의 조화평균이다.
+```
+여러 지표들을 볼수 있다. 민감도는 0.81, 특이도는 0.6951, F1값은 0.611이다. 하지만 No Information Rate에 비해 나은 것이 별로 없는 것으로 보인다. 때문에 좋은 모델이라고 할 수는 없다.
+
+### Naive bayes classification
+#### 분할
+```{r}
+# 연속형 자료를 n개의 범주형 자료로 바꿔줄 수 있는 함수를 정의한다.
+mygroup = function (y,k=4){
+  count = length(y)
+  z = rank(y,ties.method = "min")
+  return(floor((z-1)/(count/k))+1)
+}
+
+df$MonthlyCharges_group = mygroup(df$MonthlyCharges, 10)  # MonthlyCharges 값이 낮으면: 1 ~ 높으면: 10
+table(df$MonthlyCharges_group)                            # 그룹이 10개로 나눠짐
+df$tenure_group = mygroup(df$tenure, 15)                  # tenure 값을 15개로 범주화
+table(df$tenure_group)                                    # 확인
+df$TotalCharges_group = mygroup(df$TotalCharges, 10)      # TotalCharges 값을 10로 범주화
+table(df$TotalCharges_group)                              # 확인
+
+df = df[, -c(5, 18, 19)]   # 쓸모없어진 연속형 자료를 삭제
+
+# train, test 분할
+train_idx = sample(7032, 7032*3/4)  # 샘플 생성
+df_train = df[train_idx,]
+df_test = df[-train_idx,]
+df_train_labels = df[train_idx,]$Churn
+df_test_labels = df[-train_idx,]$Churn
+
+df_train = df_train[,-17]           # 훈련 데이터에 Churn 삭제
+
+prop.table(table(df_train_labels))  # 테스트와 훈련 세트의 비율이 비슷한 지 확인
+prop.table(table(df_test_labels))   # 확인
+```
+비슷하다. 잘 나뉘어졌다. 골고루
+
+#### 모델 생성 및 평가
+```{r}
+df_classifier = naiveBayes(df_train, df_train_labels)   # 나이브 베이즈 분류
+df_test_pred = predict(df_classifier, df_test)          # 위에서 생성된 모델로 분류해 본다. 
+CrossTable(df_test_pred, df_test_labels,                # 크로스 테이블을 본다.
+           prop.chisq = F, prop.c = F, prop.r = FALSE,
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(as.factor(df_test_pred),           # 더 깔끔하게 본다. 여러 지표를
+                as.factor(df_test_labels), 
+                positive = '1')
+```
+P값이 유의하므로, 모델은 설명력이 있다. 정확도는 0.74 하지만 No Information Rate도 0.7304인 것으로 보아 뛰어난 예측을 하는 것은 아니다. 민감도는 0.8143 특이도는 0.7157이다. 
+
+
+#### 라플라스 적용
+```{r}
+df_classifier_laplace = naiveBayes(df_train, df_train_labels, laplace = 1)
+df_test_pred_laplace = predict(df_classifier_laplace, df_test)
+
+CrossTable(df_test_pred_laplace, df_test_labels,
+           prop.chisq = F, prop.c = F, prop.r = FALSE,
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(as.factor(df_test_pred_laplace),
+                as.factor(df_test_labels), 
+                positive = '1')
+```
+라플라스를 적용해도 별 차이가 없는 결과가 나왔다. 오히려 실제 0인걸 1로 예측한 값이 2개 늘어났다. 미세하게 안 좋아졌다.
+
+# 결론 
+ 우선 로지스틱 회귀의 결과 민감도는 0.8111, 특이도는 0.6951, F1값은 0.611이다. 또한 P값은 매우 작으므로 이번 회귀분석 모델이 유의미한 결과라고 볼 수 있다. 하지만 정보가 없을 때의 기본 rate가 0.7342인데,  Accuracy가 0.726인 것으로 보아 특별히 좋은 모델은 아니다.  
+ 
+ 나이브 베이즈 회귀의 결과도 마찬가지로 정보가 없는 기본 모델에 비해 특별히 나을 것이 거의 없는 것으로 보인다. 또한 라플라스를 1 적용해도 별다른 차이가 없는 것으로 보아 변수가 0이기 때문에 좋은 결과가 나오지 않는 것은 아닌 것으로 보인다.  라플라스 적용 기준 민감도는 0.8151, 특이도는 0.6966, Accuracy는 0.7287, F1 값은 0.6193396이며 P값은 2e-16이하이다. 
+
+
