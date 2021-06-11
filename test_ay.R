@@ -62,3 +62,11 @@ happiness <- happiness[,2:3]
 # 지니계수
 genie <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/%EC%A7%80%EB%8B%88%EA%B3%84%EC%88%98.csv")
 genie 
+
+#낙태 합법인 국가
+abortionlegal <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/abortionlegal.csv")
+abortionlegal <- abortionlegal[-219,-3]
+abortionlegal <- as.data.frame(abortionlegal)
+colnames(abortionlegal) = c("country", "legal")
+abortionlegal$legal[abortionlegal$legal != 'yes'] <- 'no'
+
