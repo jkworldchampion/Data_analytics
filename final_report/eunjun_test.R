@@ -46,6 +46,11 @@ colnames(df_study) <- c("Country", "education")
 df_study$Country <- tolower(df_study$Country)
 df_study$Country <- gsub(" ", "", df_study$Country)
 
+df_study[92,1] <- "southkorea"
+df_study$Country <- gsub("bosniaandherzegovina", "bosnia", df_study$Country)
+df_study$Country <- gsub("unitedkingdom", "england", df_study$Country)
+df_study$Country <- gsub("tanzania(unitedrepublicof)", "tanzania", df_study$Country)
+
 # 자살률
 url <- "https://en.wikipedia.org/wiki/List_of_countries_by_suicide_rate"
 html_source <- GET(url)
@@ -57,6 +62,9 @@ colnames(df_suicide) <- c("Country", "Men suicide", "Women suicide")
 df_suicide$Country <- tolower(df_suicide$Country)
 df_suicide$Country <- gsub(" ", "", df_suicide$Country)
 
+df_suicide$Country <- gsub("[[:punct:]]", "", df_suicide$Country)
+df_suicide[22,1] <- "bosnia"
+df_suicide[174,1] <- "england"
 
 # 육아비용 
 url <- "https://www.numbeo.com/cost-of-living/prices_by_country.jsp?displayCurrency=USD&itemId=224"
@@ -67,6 +75,11 @@ df_childcost = df_childcost[,-1]
 colnames(df_childcost) <- c("Country", "child cost")
 df_childcost$Country <- tolower(df_childcost$Country)
 df_childcost$Country <- gsub(" ", "", df_childcost$Country)
+
+df_childcost[45,1] <- "england"
+df_childcost[61,1] <- "bosnia"
+
+
 
 # 65세 이상 인구 비율
 url <- "https://en.wikipedia.org/wiki/List_of_countries_by_age_structure"
@@ -79,12 +92,24 @@ colnames(df_oldratio) <- c("Country", "old ratio")
 df_oldratio$Country <- tolower(df_oldratio$Country)
 df_oldratio$Country <- gsub(" ", "", df_oldratio$Country)
 
+df_oldratio$Country <- gsub("bosniaandherzegovina", "bosnia", df_oldratio$Country)
+df_oldratio$Country <- gsub("republicofthecongo", "congo", df_oldratio$Country)
+df_oldratio$Country <- gsub("unitedkingdom", "england", df_oldratio$Country)
+
+
+
 # 행복지수 
 df_happiness <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/ahyoung/%EB%82%98%EB%9D%BC%EB%B3%84%20%ED%96%89%EB%B3%B5%EC%A7%80%EC%88%98.csv")
 df_happiness <- df_happiness[,2:3]
 colnames(df_happiness) <- c("Country", "happy score")
 df_happiness$Country <- tolower(df_happiness$Country)
 df_happiness$Country <- gsub(" ", "", df_happiness$Country)
+
+df_happiness$Country <- gsub("bosniaandherzegovina", "bosnia", df_happiness$Country)
+df_happiness$Country <- gsub("congo(brazzaville", "congo", df_happiness$Country)
+df_happiness$Country <- gsub("unitedkingdom", "england", df_happiness$Country)
+df_happiness$Country <- gsub("southsudan", "sudan", df_happiness$Country)
+
 
 
 # 지니계수 
@@ -114,17 +139,11 @@ df_abortionlegal$Country <- gsub(" ", "", df_abortionlegal$Country)
 
 #=======================================================================================================================================
 df <- inner_join(df_gini, df_abortionlegal, by = 'Country')
+df <- inner_join(df, df_study, by = 'Country')
+df <- inner_join(df, df_oldratio, by='Country')
+df <- inner_join(df, df_happiness, by='Country')
+df <- inner_join(df, df_childcost, by='Country')
+df <- inner_join(df, df_suicide, by = "Country")
+df <- inner_join(df, df_birth_rate, by = "Country")
 
-df <- inner_join(df_gini, df_study, by = 'Country')
-
-df <- inner_join(df_gini, df_suicide, by='Country')
-
-df <- inner_join(df_gini, df_childcost, by='Country')
-
-df <- inner_join(df_gini, df_oldratio, by='Country')
-
-df <- inner_join(df_gini, df_happiness, by='Country')
-
-df <- inner_join(df_gini, df_gini, by='Country')
-
-df <- inner_join(df_gini, df_abortionlegal, by='Country')
+df$Country <- str_to_title(df$Country)
