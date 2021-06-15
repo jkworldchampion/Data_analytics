@@ -161,9 +161,14 @@ df$Country <- str_to_title(df$Country)
 # 6. 나라별 행복지수는 출산율에 영향을 미칠 것이다.  
 # 7. 나라별 지니계수는 출산율에 영향을 미칠 것이다.  
 # 8. 나라별 육아비용은 출산율에 영향을 미칠 것이다.  
-# 9. 나라별 학대 현황은 출산율에 영향을 미칠 것이다.  
+# 9. 나라별 낙태 현황 현황은 출산율에 영향을 미칠 것이다.  
 
 
+# 낙태 합법 변수 재부호화
+df$legal.re[df$legal == 'yes'] <- 1
+df$legal.re[df$legal == 'no'] <- 0
+
+# 65 세 이상 변수 퍼센트 없애기
 df$`old ratio` <- gsub("[[:punct:]]", "", df$`old ratio`) # %없애주기
 df$`old ratio` <- gsub("\u00A0", "", df$`old ratio`) # %없애주기
 
@@ -176,10 +181,10 @@ df$`old ratio` <- df$`old ratio` / 10
 df$`child cost` <- as.numeric(df$`child cost`)
 df$`Men suicide` <- as.numeric(df$`Men suicide`) 
 df$`Women suicide` <- as.numeric(df$`Women suicide`)
-df$legal <- as.factor(df$legal) 
+#df$legal <- as.factor(df$legal) 
 
 str(df)
-regression <- lm(`Birth rate` ~ + `gini_score` +`legal`+`education`+`old ratio`+`happy score`+`child cost`+`Men suicide`+`Women suicide`, data = df) 
+regression <- lm(`Birth rate` ~ + `gini_score` +`legal.re`+`education`+`old ratio`+`happy score`+`child cost`+`Men suicide`+`Women suicide`, data = df) 
 
 summary(regression)
 
@@ -192,4 +197,129 @@ library(QuantPsyc)
 
 lm.beta(regression)
 round(lm.beta(regression), 3)
+
+# 다중공선성 진단을 위한 VIF 값 구하기
+#install.packages("car")
+library(car)
+vif(regression)
+vif(regression) < 10
+
+# ‘sjPlot’ 패키지를 이용한 결과표 및 도표 출력
+install.packages("sjPlot")
+library(sjPlot)
+tab_model(regression, show.se = T, show.ci = F, show.stat= T)
+
+# 한글을 사용
+tab_model(regression, show.se = T, show.ci = F, show.stat= T,
+          pred.labels = c("(Intercept)", "지니계수", "낙태 합법", "교육수준",
+                          "고령화", "행복지수","양육 비용","남성 자살율","여성 자살율"), dv.labels = c("출산율"), file =
+            "multiple_regression.html")
+file.show("multiple_regression.html")
+
+
+# 정규화 하기
+##Regularization
+#install.packages("glmnet")
+#install.packages("dplyr")
+library(glmnet)
+library(dplyr)
+
+names(df)
+rownames(df)[1:78] <- df$Country[1:78]
+df <- df[,c(-1,-3)]
+
+reg.var <- df
+names(reg.var)
+str(reg.var)
+colSums(is.na(reg.var))
+reg.var.valid <- reg.var[complete.cases(reg.var),]
+colSums(is.na(reg.var.valid))
+reg.var.std <- as.data.frame(scale(reg.var.valid, center = T, scale = T))
+sapply(reg.var.std, sd) # 표준편차
+sapply(reg.var.std, mean) # 평군
+
+
+
+
+
+# Lasso
+res.lasso <- glmnet(as.matrix(reg.var.std[2:length(reg.var.std)]),
+                    reg.var.std$`Birth rate`, family = "gaussian",alpha = 1)
+res.lasso
+
+plot(res.lasso, xvar = "lambda")
+set.seed(12345)
+
+res.lasso <-cv.glmnet(as.matrix(reg.var.std[2:length(reg.var.std)]),
+            reg.var.std$`Birth rate`,
+            family = "gaussian", alpha = 1,
+            nfolds = 4, type.measure = "mse")
+res.lasso
+plot(res.lasso)
+log(res.lasso$lambda.min)
+log(res.lasso$lambda.1se)
+plot(res.lasso$glmnet.fit, xvar = "lambda")
+coef.lasso <- coef(res.lasso, s = "lambda.min")[,1]
+coef.lasso
+mse.min.lasso <- res.lasso$cvm[res.lasso$lambda ==
+                                 res.lasso$lambda.min]
+mse.min.lasso
+r2.min.lasso <- res.lasso$glmnet.fit$dev.ratio[res.lasso$lambda == res.lasso$lambda.min]
+r2.min.lasso
+
+
+# Ridge
+set.seed(12345)
+res.ridge <-
+  cv.glmnet(as.matrix(reg.var.std[2:length(reg.var.std)]),
+            reg.var.std$`Birth rate`,
+            family = "gaussian", alpha = 0,
+            nfolds = 4, type.measure = "mse")
+res.ridge
+plot(res.ridge)
+log(res.ridge$lambda.min)
+log(res.ridge$lambda.1se)
+plot(res.ridge$glmnet.fit, xvar = "lambda")
+coef.ridge <- coef(res.ridge, s = "lambda.min")[,1]
+coef.ridge
+mse.min.ridge <- res.ridge$cvm[res.ridge$lambda ==
+                                 res.ridge$lambda.min]
+mse.min.ridge
+r2.min.ridge <- res.ridge$glmnet.fit$dev.ratio[res.ridge$lambda ==
+                                                 res.ridge$lambda.min]
+r2.min.ridge
+
+
+# Elasticnet
+set.seed(12345)
+res.elastic <-
+  cv.glmnet(as.matrix(reg.var.std[2:length(reg.var.std)]),
+            reg.var.std$`Birth rate`,
+            family = "gaussian", alpha = .5,
+            nfolds = 4, type.measure = "mse")
+res.elastic
+plot(res.elastic)
+log(res.elastic$lambda.min)
+log(res.elastic$lambda.1se)
+plot(res.elastic$glmnet.fit, xvar = "lambda")
+coef.elastic <- coef(res.elastic, s = "lambda.min")[,1]
+coef.elastic
+mse.min.elastic <- res.elastic$cvm[res.elastic$lambda ==
+                                     res.elastic$lambda.min]
+mse.min.elastic
+r2.min.elastic <-
+  res.elastic$glmnet.fit$dev.ratio[res.elastic$lambda ==
+                                     res.elastic$lambda.min]
+r2.min.elastic
+# Compare with lm output
+res.lm <- lm(`Birth rate` ~ `gini_score`+`legal.re`+`education`+`old ratio`+`happy score`+`child cost`+`Men suicide`+`Women suicide`, data =
+               reg.var.std)
+summary(res.lm)
+
+library(dvmisc)
+get_mse(res.lm)
+
+
+
+
 
