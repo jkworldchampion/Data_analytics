@@ -113,8 +113,8 @@ df$Contract = as.factor(df$Contract)
 df$PaperlessBilling = as.factor(df$PaperlessBilling)
 str(df)
 
-cars_gbm <- gbm(
-  formula = Churn ~ tenure, Contract, PaperlessBilling, TotalCharges,
+df_gbm <- gbm(
+  formula = Churn ~ tenure + Contract + PaperlessBilling + TotalCharges,
   distribution = "huberized", 
   data = df,
   #weights,
@@ -130,3 +130,16 @@ cars_gbm <- gbm(
   verbose = TRUE,
   n.cores = NULL
 )
+
+print(df_gbm)
+summary(
+  df_gbm, 
+  cBars = 10,
+  method = relative.influence, # also can use permutation.test.gbm
+  las = 2
+)
+
+gbm.perf(df_gbm, plot.it = T, oobag.curve = T, method = 'test')
+predict(df_gbm, df_train)
+
+
