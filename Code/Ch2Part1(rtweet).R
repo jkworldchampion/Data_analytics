@@ -20,7 +20,7 @@ class(twitterUser)
 str(twitterUser)
 
 # extract a few sample tweets from this user's timeline
-tweets <- get_timeline(twitterUser$user_id, n = 10)
+tweets <- get_timeline(twitterUser$user_id, n = 100)
 tweets %>% select(c("created_at", "is_retweet", "text"))
 tweets <- get_timeline(twitterUser$user_id, n = 3200)  #around one minute
 #The Search API is not complete index of all Tweets, but instead an index of recent Tweets. 

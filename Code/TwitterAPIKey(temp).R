@@ -1,3 +1,4 @@
+library(rtweet)
 # set the NEW credentials with OAuth 2.0
 APP_NAME <- "Twitter_R_juhwan"
 API_KEY <- "sVzjtbhCA9NltKMySKpCMHtKX"
