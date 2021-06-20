@@ -9,6 +9,7 @@ library(dplyr)
 library(stringr)
 library(QuantPsyc)
 library(car)
+library(sjPlot)
 options(scipen = 1000)
 
 # 종속변수
@@ -200,9 +201,17 @@ df_equality$Country <- gsub("unitedkingdom", "england", df_equality$Country)
 df_equality$Country <- gsub("democraticrepublicofthecongo", "congo", df_equality$Country)
 
 
-
 # 혁신데이터 
-df_innovation <- read.csv("")
+#df_innovation <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/globalinnovationindex.csv")
+#df_innovation <- df_innovation[,c(2,5)]
+#colnames(df_innovation) <- c("Country", "innovation")
+
+
+# OECD 국가
+df_oecd <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/OECD%20country.csv")
+df_oecd <- cbind(df_oecd, 1)
+colnames(df_oecd) <- c("Country", "OECD")
+
 
 #=======================================================================================================================================
 df <- inner_join(df_gini, df_abortionlegal, by = 'Country')
@@ -218,20 +227,6 @@ df <- inner_join(df, df_vary, by='Country')
 df$Country <- str_to_title(df$Country)
 
 #=======================================================================================================================================
-
-#다중회귀분석 
-
-# 1. 나라별 결혼 나이는 출산율에 영향을 미칠 것이다.  
-# 2. 나라별 교육 수준의 차이는 출산율에 영향을 미칠 것이다.  
-# 3. 나라별 자살율은 출산율에 영향을 미칠 것이다.  
-# 4. 나라별 육아비용은 출산율에 영향을 미칠 것이다.  
-# 5. 나라별 65새 이상 인구 비율은 출산율에 영향을 미칠 것이다.  
-# 6. 나라별 행복지수는 출산율에 영향을 미칠 것이다.  
-# 7. 나라별 지니계수는 출산율에 영향을 미칠 것이다.  
-# 8. 나라별 육아비용은 출산율에 영향을 미칠 것이다.  
-# 9. 나라별 낙태 현황 현황은 출산율에 영향을 미칠 것이다.  
-
-
 # 낙태 합법 변수 재부호화
 df$legal <- ifelse(df$legal == 'yes', 1, 0)
 
@@ -275,15 +270,30 @@ round(lm.beta(step_df), 3)
 # 다중공선성 진단을 위한 VIF 값 구하기
 vif(step_df)
 
-# ‘sjPlot’ 패키지를 이용한 결과표 및 도표 출력
-library(sjPlot)
-tab_model(regression, show.se = T, show.ci = F, show.stat= T)
+# sjplot
+set_theme(axis.title.size = 1.0, axis.textsize = 1.0)
+plot_model(step_df, type = "est", wrap.labels=5)
+# plot_model(step_df, type = "std", wrap.labels=5) # 에러남
+plot_model(step_df, type = "diag", wrap.labels=5)
 
-# 한글을 사용
-tab_model(regression, show.se = T, show.ci = F, show.stat= T,
-          pred.labels = c("(Intercept)", "지니계수", "낙태 합법", "교육수준",
-                          "고령화", "행복지수","양육 비용","남성 자살율","여성 자살율", "gdp", "평등지수"), dv.labels = c("출산율"), file =
-            "multiple_regression.html")
-file.show("multiple_regression.html")
+
+
+#===================================================================================================
+# OECD 추가하고 분석
+Country <- rownames(df_std)
+df_std <- cbind(df_std, Country)
+df_std <- left_join(df_std, df_oecd, by='Country')
+df_std$OECD[is.na(df_std$OECD)] <- 0  # OECD여부에 따라 맞으면1, 아니면0
+df_std <- df_std[,-39] # Country 삭제
+df_std$OECD <- as.numeric(df_std$OECD)
+
+df_log_reg <- glm(OECD ~ ., family = 'binomial', data = df_std, maxit = 100)
+summary(df_log_reg)
+
+df_log_reg_Null = glm(OECD ~ 1, family = 'binomial', data = df_std, maxit = 100)
+summarise()
+
+
+
 
 
