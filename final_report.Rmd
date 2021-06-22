@@ -19,6 +19,11 @@ suppressMessages(library(car)) %>% suppressWarnings()
 suppressMessages(library(sjPlot)) %>% suppressWarnings()
 suppressMessages(library(Epi)) %>% suppressWarnings()
 suppressMessages(library(caret)) %>% suppressWarnings()
+suppressMessages(library(dvmisc)) %>% suppressWarnings()
+suppressMessages(library(Metrics)) %>% suppressWarnings()
+suppressMessages(library(yardstick)) %>% suppressWarnings()
+suppressMessages(library(e1071)) %>% suppressWarnings()
+suppressMessages(library(descr)) %>% suppressWarnings()
 options(scipen = 1000)    # 옵션으로 숫자 형태 조절
 ```
 
@@ -262,7 +267,7 @@ df <- df[,na_col_list*-1]
 df <- df[,-41]
 df <- df[,c(-16, -32)]
 
-# Elasticnet 정규화
+# 표준화
 df_std <- as.data.frame(scale(df))
 head(sapply(df_std, sd))     # 표준편차
 head(sapply(df_std, mean))   # 평균
@@ -272,11 +277,13 @@ vif_model <- lm(`Birth rate` ~ ., data = df_std)
 vif_value <- vif(vif_model) > 5
 df_vif <- df_std[, vif_value]
 
+corrplot::corrplot(cor(df_vif))
 # 다중공선성 확인 그래프 하나 추가
 ```
 
-## 2 다중선형회귀
-### 2.1 회귀분석
+## 2 국가별 출산율 분석
+### 2.1 다중선형 회귀분석
+전진 선택법 사용하여 AIC가 낮아지는 쪽으로 변수를 선택하는 방법이다.
 ```{r, results='hide'}
 df_regression <- lm(`Birth rate` ~ ., data=df_vif)
 df_regression_null <- lm(`Birth rate` ~ 1, data=df_vif)
@@ -289,21 +296,438 @@ summary(step_df) # 요약본 보기
 round(lm.beta(step_df), 3)    # 표준화 계수확인 
 ```
 
+
 ### 2.2 검증
 ```{r}
 vif(step_df) # 다중공선성 확인
 
 # sjplot
 set_theme(axis.title.size = 1.0, axis.textsize = 1.0)
-plot_model(step_df, type = "est", wrap.labels=5)
 plot_model(step_df, type = "diag", wrap.labels=5)
-
-# plot으로 알아보기
-#정규성 검정
 par(mfrow = c(2,2))# plot 4개를 동시에 표시하기 위함
 plot(step_df)
 par(mfrow = c(1,1))
 ```
 
+### 2.3 Elasticnet 분석
+glmnet이라는 패키지를 이용하면, 단순히 정규화 뿐만 아니라 모델의 복잡도도 고려하여 회귀 모델을 만들 수 있다.
+그래서 이번엔 elastic을 이용해 보겠다.
+```{r}
+set.seed(1234) # 시드설정 
+df_elastic <- cv.glmnet(as.matrix(df_vif[,-7]),
+                        df_vif$`Birth rate`,
+                        family = "gaussian", alpha = .5,
+                        nfolds = 4, type.measure = "mse")
+
+plot(df_elastic)      # 최적의 lambda값 확인
+log(df_elastic$lambda.min)     # MSE가 가장 작을때의 lambda
+log(df_elastic$lambda.1se)     # 가장 작을때 1표준편차 안에서 가장 간결한 모델일 때 lambda.
+plot(df_elastic$glmnet.fit, xvar = "lambda")   # 변수가 추가될 때마다 모수 추정값의 변화를 볼 수 있다.
+coef.elastic <- coef(df_elastic, s = "lambda.min")[,1] 
+coef.elastic       # 계수확인 
+mse.min.elastic <- df_elastic$cvm[df_elastic$lambda == df_elastic$lambda.min]
+mse.min.elastic    # elestic 모델에서 최적의 mse값
+r2.min.elastic <- df_elastic$glmnet.fit$dev.ratio[df_elastic$lambda == df_elastic$lambda.min]
+r2.min.elastic     # elestic 모델에서 최적의 R-squared값 
+
+# step_df 모델 수치
+step_df_mse <- sum( (step_df$residuals)^2 )/nrow(df_vif)
+step_df_mse
+```
+
+### 2.4 Twitter 분석
+```{r}
+#install.packages("remotes")
+#remotes::install_github("haven-jeon/KoNLP", upgrade = "never", INSTALL_opts = c("--no-multiarch"))
+library(syuzhet)
+library(tidytext)
+library(wordcloud)
+library(tm)
+library(stringr)
+library(rtweet)
+library(dplyr)
+library(twitteR)
+library(dplyr)
+library(RColorBrewer)
+library(KoNLP)
+library(SnowballC)
+library(ggplot2)
+library(SentimentAnalysis)
+library(tidyverse)
+useSejongDic()
+
+#source(file = "TwitterAPIKey.R", echo = FALSE)
+
+#childbirth <- enc2utf8("childbirth")
+#data <- search_tweets(childbirth, n=10000, lang="en")
+#data <- unique(data)
+#data <- data[,c(1,2,3,4,5,6,7,67)]
+#write_csv(data, "childbirthdata.csv")
+
+data <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/childbirthdata.csv")
+
+text <- str_replace_all(data$text, "@\\w+", "")
+text <- str_replace_all(data$text, "[[:punct:]]", "") 
+wordCorpus <- Corpus(VectorSource(text))
+wordCorpus <- tm_map(wordCorpus, content_transformer(tolower))
+wordCorpus <- tm_map(wordCorpus, removeWords, stopwords("english"))
+wordCorpus <- tm_map(wordCorpus, removeWords, c("https"))
+wordCorpus <- tm_map(wordCorpus, stripWhitespace)
+wordCorpus <- tm_map(wordCorpus, removePunctuation)
+wordCorpus <- tm_map(wordCorpus, removeNumbers)
+wordCorpus <- tm_map(wordCorpus, removeWords, c("amp"))
+wordCorpus <- tm_map(wordCorpus, removeWords, c("childbirth"))
+wordCorpus <- tm_map(wordCorpus, removeWords, c("nhs", "realdonaldtrump", "tcoqzrnig"))
+wordCorpus[[1]]$content
+
+pal <- brewer.pal(8, "Dark2")
+wordcloud(words=wordCorpus, scale=c(4,0.5), max.words = 300,
+          random.order = F, rot.per=0.35, use.r.layout = F, min.freq = 50, colors=pal)
+
+
+encodesentiment <- function(x) {
+  if(x <= -1){
+    "1) very negative"
+  }else if(x > -1 & x < 0){
+    "2) negative"
+  }else if(x > 0 & x < 1){
+    "4) positive"
+  }else if(x >= 1){
+    "5) very positive"
+  }else {
+    "3) neutral"
+  }
+}
+
+tweetsentiment <- get_sentiment(data$text, method= "syuzhet")
+tweets <- cbind(data, tweetsentiment)
+tweets$Sentiments <- sapply(tweets$tweetsentiment, encodesentiment)
+
+qplot(tweets$tweetsentiment) + theme(legend.position = "none")+
+  xlab("sentiment score") + ylab("number of tweets") +
+  ggtitle("childbirth tweets by sentiment score")
+
+ggplot(tweets, aes(Sentiments)) +
+  geom_bar(fill="orange") +
+  theme(legend.position = "none", axis.title = element_blank())+
+  ylab("number of tweets") +
+  ggtitle("tweets about childbirth")
+
+
+# =============================================
+
+#parenting <- enc2utf8("parenting")
+#data2 <- search_tweets(parenting, n=10000, lang="en")
+#data2 <- unique(data2)
+#data2 <- data2[,c(1,2,3,4,5,6,7,67)]
+#write_csv(data2, "parentingdata.csv")
+
+data2 <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/parentingdata.csv")
+
+text2 <- str_replace_all(data2$text, "@\\w+", "")
+text2 <- str_replace_all(data2$text, "[[:punct:]]", "")
+wordCorpus2 <- Corpus(VectorSource(text2))
+wordCorpus2 <- tm_map(wordCorpus2, content_transformer(tolower))
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, stopwords("english"))
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("https"))
+wordCorpus2 <- tm_map(wordCorpus2, stripWhitespace)
+wordCorpus2 <- tm_map(wordCorpus2, removePunctuation)
+wordCorpus2 <- tm_map(wordCorpus2, removeNumbers)
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("parenting"))
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("tcolukpux", "yoongi"))
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("httpstcolukpux"))
+wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("amp"))
+wordCorpus2[[1]]$content
+
+
+set.seed(1234)
+wordcloud(words=wordCorpus2, scale=c(4,0.5), max.words = 200,
+          random.order = F, rot.per=0.35, use.r.layout = F, min.freq = 10, colors=pal)
+
+
+# 감정분석 
+
+tweetsentiment2 <- get_sentiment(data2$text, method= "syuzhet")
+tweets2 <- cbind(data2, tweetsentiment2)
+tweets2$Sentiments2 <- sapply(tweets2$tweetsentiment2, encodesentiment)
+
+qplot(tweets2$tweetsentiment2) + theme(legend.position = "none")+
+  xlab("sentiment score") + ylab("number of tweets") +
+  ggtitle("parenting tweets by sentiment score")
+
+ggplot(tweets2, aes(Sentiments2)) +
+  geom_bar(fill="aquamarine4") +
+  theme(legend.position = "none", axis.title = element_blank())+
+  ylab("number of tweets") +
+  ggtitle("tweets about parenting")
+
+
+# =====================================================
+
+
+#childbirth_k <- enc2utf8("출산")
+#Kdata <- search_tweets(childbirth_k, n=10000, lang="ko")
+#Kdata <- unique(Kdata)
+#Kdata <- Kdata[,1:13]
+#write_csv(Kdata, "출산.csv")
+Kdata <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/%E1%84%8E%E1%85%AE%E1%86%AF%E1%84%89%E1%85%A1%E1%86%AB.csv")
+
+Kdata_text <- Kdata$text
+Kdata_text <- sapply(Kdata_text, extractNoun, USE.NAMES = F)
+Kdata_word <- unlist(Kdata_text)
+Kdata_word <- Filter(function(x){nchar(x)>=2},Kdata_word)
+
+Kdata_word <- gsub("\n", "", Kdata_word)
+Kdata_word <- gsub("\r", "", Kdata_word)
+Kdata_word <- gsub("https://", "", Kdata_word)
+Kdata_word <- gsub("@", "", Kdata_word)
+Kdata_word <- gsub("[[:punct:]]", "", Kdata_word)
+Kdata_word <- str_replace_all(Kdata_word,"[A-Za-z0-9]","")
+Kdata_word <- gsub("[ㄱ-ㅎ]", "", Kdata_word)
+Kdata_word <- gsub("[ㅜ|ㅠ]", "", Kdata_word)
+Kdata_word <- gsub("로", "", Kdata_word)
+Kdata_word <- gsub("합사시켜", "", Kdata_word)
+Kdata_word <- gsub("해서", "", Kdata_word)
+Kdata_word <- gsub("출산", "", Kdata_word)
+Kdata_word <- gsub("쿠오모가", "", Kdata_word)
+Kdata_word <- gsub("까지", "", Kdata_word)
+Kdata_word <- gsub("들이", "", Kdata_word)
+Kdata_word <- gsub("그래서", "", Kdata_word)
+Kdata_word <- gsub("그걸", "", Kdata_word)
+
+head(Kdata_word)
+
+set.seed(1234)
+wordcloud(words=Kdata_word, scale=c(5,0.5),
+          min.freq = 30, random.order = F, max.words=200, family="AppleGothic", colors=pal)
+
+# 감정분석 
+
+senti_words_kr <- readr::read_delim("https://raw.githubusercontent.com/park1200656/KnuSentiLex/master/SentiWord_Dict.txt", delim='\t', col_names=c("term", "score"))
+head(senti_words_kr)
+
+x <- duplicated(senti_words_kr$term)
+senti_words_kr2 <- senti_words_kr[!x, ]
+senti_dic_kr <- SentimentDictionaryWeighted(words = senti_words_kr2$term, 
+                                            scores = senti_words_kr2$score)
+senti_dic_kr <- SentimentDictionary(senti_words_kr2$term[senti_words_kr2$score > 0], 
+                                    senti_words_kr2$term[senti_words_kr2$score < 0])
+
+res_sentiment <- analyzeSentiment(Kdata_word,
+                                  language="korean",
+                                  rules=list("KoreanSentiment"=list(ruleSentiment, senti_dic_kr)),
+                                  removeStopwords = F, stemming = F)
+theme_set(theme_minimal(base_family = "AppleGothic"))
+
+df <- data.frame(res_sentiment, Kdata_word)
+df <- df[!(df$Kdata_word==""),]
+
+df[is.na(df$KoreanSentiment),1] <- "neutral"
+df[df$KoreanSentiment == 0,1] <- "neutral"
+df[df$KoreanSentiment == 1,1] <- "positive"
+df[df$KoreanSentiment == 0.125,1] <- "positive"
+df[df$KoreanSentiment == 0.111111111111111,1] <- "positive"
+df[df$KoreanSentiment == 0.0833333333333333,1] <- "positive"
+df[df$KoreanSentiment < 0,1] <- "negative"
+
+df_final <- df[!(df$KoreanSentiment=="neutral"),] #중립이 압도적으로 많아 빼고 시각화
+
+ggplot(df_final, aes(x = KoreanSentiment)) + 
+  geom_bar(stat = "count", width = 0.7, fill = "orange") + 
+  theme_minimal() + ggtitle("tweets about childbirth in korea")
+
+# ===================================================
+
+
+#childcare_k <- enc2utf8("육아")
+#Kdata2 <- search_tweets(childcare_k, n=10000, lang="ko")
+#Kdata2 <- unique(Kdata2)
+#Kdata2 <- Kdata2[,1:13]
+#write_csv(Kdata2, "육아.csv")
+
+Kdata2 <- read.csv("https://raw.githubusercontent.com/jkworldchampion/Data_analytics/main/final_report/data_set/%E1%84%8B%E1%85%B2%E1%86%A8%E1%84%8B%E1%85%A1.csv")
+
+Kdata_text2 <- Kdata2$text
+
+Kdata_text2 <- sapply(Kdata_text2, extractNoun, USE.NAMES = F)
+Kdata_word2 <- unlist(Kdata_text2)
+Kdata_word2 <- Filter(function(x){nchar(x)>=2},Kdata_word2)
+
+Kdata_word2 <- gsub("\n", "", Kdata_word2)
+Kdata_word2 <- gsub("\r", "", Kdata_word2)
+Kdata_word2 <- gsub("https://", "", Kdata_word2)
+Kdata_word2 <- gsub("@", "", Kdata_word2)
+Kdata_word2 <- gsub("[[:punct:]]", "", Kdata_word2)
+Kdata_word2 <- str_replace_all(Kdata_word2,"[A-Za-z0-9]","")
+Kdata_word2 <- gsub("[ㄱ-ㅎ]", "", Kdata_word2)
+Kdata_word2 <- gsub("[ㅜ|ㅠ]", "", Kdata_word2)
+Kdata_word2 <- gsub("로", "", Kdata_word2)
+Kdata_word2 <- gsub("해서", "", Kdata_word2)
+Kdata_word2 <- gsub("육아", "", Kdata_word2)
+Kdata_word2 <- gsub("키선배님이", "", Kdata_word2)
+Kdata_word2 <- gsub("놀토가", "", Kdata_word2)
+Kdata_word2 <- gsub("호시는", "", Kdata_word2)
+Kdata_word2 <- gsub("트니트니", "", Kdata_word2)
+Kdata_word2 <- gsub("세븐", "", Kdata_word2)
+Kdata_word2 <- gsub("그거", "", Kdata_word2)
+Kdata_word2 <- gsub("갖다대니까", "", Kdata_word2)
+Kdata_word2 <- gsub("하게", "", Kdata_word2)
+
+set.seed(1234)
+wordcloud(words=Kdata_word2, scale=c(4,0.5),
+          min.freq = 40, random.order = F, max.words=200, family="AppleGothic", colors=pal)
+
+
+# 감정분석 
+res_sentiment2 <- analyzeSentiment(Kdata_word2,
+                                  language="korean",
+                                  rules=list("KoreanSentiment"=list(ruleSentiment, senti_dic_kr)),
+                                  removeStopwords = F, stemming = F)
+
+df2 <- data.frame(res_sentiment2, Kdata_word2)
+df2 <- df2[!(df2$Kdata_word2==""),]
+
+df2[is.na(df2$KoreanSentiment),1] <- "neutral"
+df2[df2$KoreanSentiment == 0,1] <- "neutral"
+df2[df2$KoreanSentiment == 1,1] <- "positive"
+df2[df2$KoreanSentiment == 0.0555555555555556,1] <- "positive"
+df2[df2$KoreanSentiment == 0.333333333333333,1] <- "positive"
+df2[df2$KoreanSentiment == 0.142857142857143,1] <- "positive"
+df2[df2$KoreanSentiment == 0.1,1] <- "positive"
+df2[df2$KoreanSentiment == 0.0833333333333333,1] <- "positive"
+df2[df2$KoreanSentiment == 0.0769230769230769,1] <- "positive"
+df2[df2$KoreanSentiment == 0.0588235294117647,1] <- "positive"
+df2[df2$KoreanSentiment == 0.05,1] <- "positive"
+df2[df2$KoreanSentiment < 0,1] <- "negative"
+df2[df2$KoreanSentiment == 0.0714285714285714,1] <- "negative"
+
+df2_final <- df2[!(df2$KoreanSentiment=="neutral"),]
+
+ggplot(df2_final, aes(x = KoreanSentiment)) + 
+  geom_bar(stat = "count", width = 0.7, fill = "aquamarine4") + 
+  theme_minimal() + ggtitle("tweets about parenting in korea")
+```
+
+### 2.5 결론
+분석방법으로 전진선택법과 Elasticnet방법을 사용해 보았다. 전진선택법은 AIC가 낮아지는 쪽을 선택하는 방법이다. 반면에 Elasticnet방법은 모델의 효율성도 생각하는 모델이다. 우리가 살펴본 수치상으론 전진선택법이 더 우수했다. 여기선 전진 선택법의 여러 지표들을 통합해서 알아보겠다.
+```{r}
+tab_model(step_df, show.se = T, show.ci = F, show.stat= T, auto.label = F)
+plot_model(step_df, sort.est = T, type = "est", wrap.labels=5)
+
+```
+
+
+## 3 OECD 회원국 분석
+### 3.1 로지스틱 회귀분석
+```{r, results='hide'}
+Country <- rownames(df_vif)
+df_vif <- cbind(df_vif, Country)
+df_vif <- left_join(df_vif, df_oecd, by='Country')
+df_vif$OECD[is.na(df_vif$OECD)] <- 0  # OECD여부에 따라 맞으면1, 아니면0
+rownames(df_vif) <- df_vif[,28]
+df_vif <- df_vif[,-28] # Country 삭제
+df_vif$OECD <- as.numeric(df_vif$OECD)
+
+# 다중공선성에 의한 변수 삭제
+vif_model <- lm(`OECD` ~ ., data = df_vif)
+vif_value <- vif(vif_model) > 10
+df_vif_modify <- df_vif[, !vif_value]
+
+df_log_reg <- glm(`OECD` ~ ., family = binomial, data = df_vif_modify, maxit = 100) # 변수 초과에 의해 정답률이 1이 나온다.
+summary(df_log_reg)
+
+df_log_reg_Null = glm(OECD ~ 1, family = binomial, data = df_vif_modify, maxit = 100)
+summary(df_log_reg_Null)
+
+# anova(df_log_reg_Null, df_log_reg, test="LRT")
+
+step_df_vif_log_reg <- step(df_log_reg_Null, scope=list(lower=df_log_reg_Null, upper=df_log_reg),
+                            direction="forward")
+```
+```{r}
+summary(step_df_vif_log_reg)
+exp(coef(step_df_vif_log_reg))      # 계수를 살펴본다 
+vif(step_df_vif_log_reg)            # 다중공선성 확인
+```
+#### 3.1.1 모델 평가
+```{r}
+df_log_reg_graph <- ROC(form = `OECD` ~ `old ratio`+
+                          `infant mortality rate`+
+                          `industry employed`+
+                          `gini_score`+
+                          `Women suicide`,
+                        data = df_vif_modify,
+                        plot = "ROC")
+
+df_log_reg_graph$res[round(df_log_reg_graph$res$lr.eta,3) == 0.674,]
+df_log_reg_graph$AUC 
+df_log_reg_graph$lr
+
+# caret
+confusionMatrix(
+  as.factor(ifelse(predict(step_df_vif_log_reg, type = "response")>0.674,1,0)),
+  as.factor(df_log_reg$y),
+  positive = '1')
+
+F1_score <- 2*(0.9643*0.8710)/(0.9643+0.8710)
+F1_score
+```
+
+### 3.2 나이브 베이즈
+```{r}
+# 그룹화 함수
+mygroup = function (y,k=4){
+  count = length(y)
+  z = rank(y,ties.method = "min")
+  return(floor((z-1)/(count/k))+1)
+}
+df_vif_factor <- data.frame()
+df_vif_factor <- lapply(df_vif, function(x){mygroup(x,10)}) # 각각 10개씩 그룹으로 나눈다.
+df_vif_factor <- as.data.frame(df_vif_factor)
+
+df_vif_factor$OECD <- ifelse(df_vif_factor$OECD == '6', 1, 0)  # 종속도 변하기 때문에 다시 바꿔준다
+
+# 데이터 분할
+train_idx = sample(73, 73*3/4)      
+df_train = df_vif_factor[train_idx,]
+df_test = df_vif_factor[-train_idx,]
+df_train_labels = df_vif_factor[train_idx,]$OECD
+df_test_labels = df_vif_factor[-train_idx,]$OECD
+
+
+df_train = df_train[,-length(df_train)] # OECD 열을 삭제
+
+prop.table(table(df_train_labels))
+prop.table(table(df_test_labels))
+# 비슷하다.
+
+# 모델 생성
+df_classifier = naiveBayes(df_train, df_train_labels)
+```
+
+#### 3.2.1 모델 평가
+```{r}
+df_test_pred = predict(df_classifier, df_test)
+
+CrossTable(df_test_pred, df_test_labels,
+           prop.chisq = F, prop.c = F, prop.r = FALSE,
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(as.factor(df_test_pred),
+                as.factor(df_test_labels), 
+                positive = '1')
+
+# 모델 개선형
+df_classifier_modify <- naiveBayes(df_train, df_train_labels, laplace = 1)
+df_test_pred_modify = predict(df_classifier_modify, df_test)
+
+CrossTable(df_test_pred_modify, df_test_labels,
+           prop.chisq = F, prop.c = F, prop.r = FALSE,
+           dnn = c('predicted', 'actual'))
+
+confusionMatrix(as.factor(df_test_pred_modify),
+                as.factor(df_test_labels), 
+                positive = '1')
+```
 
 # 결론

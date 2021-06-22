@@ -361,19 +361,17 @@ df_elastic <- cv.glmnet(as.matrix(df_vif[,-28]),
 
 # 정규분포를 따르는 선형회귀분석 시행  
 # cv.glmnet 함수로 x와 y 정의하고 ElasticNet Regression 방법으로 분석할 것이기 때문에 alpha값은 0.5로 지정해 비중을 조정해주었다.성과의 기준치는 평균 제곱근 오차(mse) 설정하여  SSE 최소화  
-df_elastic
-plot(df_elastic)  # df_elastic 변수를 그래프로 그림으로써, 최적의 lambda값을 정할 수 있다.
-log(df_elastic$lambda.min)# Cross-validation에서 에러가 최소로 나타나는 람다값을 찾아준다.
-log(df_elastic$lambda.1se) # Standard error가 가장 Regularized 된 모델이 되는 람다값을 찾아준다.
-plot(df_elastic$glmnet.fit, xvar = "lambda") 
-coef.elastic <- coef(df_elastic, s = "lambda.min")[,1]
+
+plot(df_elastic)      # 최적의 lambda값 확인
+log(df_elastic$lambda.min)     # MSE가 가장 작을때의 lambda
+log(df_elastic$lambda.1se)     # 가장 작을때 1표준편차 안에서 가장 간결한 모델부분의 lambda.
+plot(df_elastic$glmnet.fit, xvar = "lambda")   # 변수가 추가될 때마다 모수 추정값의 변화를 볼 수 있다.
+coef.elastic <- coef(df_elastic, s = "lambda.min")[,1]  # 계수확인 
 coef.elastic
-mse.min.elastic <- df_elastic$cvm[df_elastic$lambda ==
-                                    df_elastic$lambda.min]
+mse.min.elastic <- df_elastic$cvm[df_elastic$lambda == df_elastic$lambda.min]
 mse.min.elastic #  elestic 모델에서 최적의 mse값
-r2.min.elastic <-
-  df_elastic$glmnet.fit$dev.ratio[df_elastic$lambda ==
-                                    df_elastic$lambda.min]
+
+r2.min.elastic <- df_elastic$glmnet.fit$dev.ratio[df_elastic$lambda == df_elastic$lambda.min]
 r2.min.elastic
 #elestic 모델에서 최적의 R-squared값 
 
@@ -388,10 +386,7 @@ par(mfrow = c(1,1))
 
 
 # OECD 추가하고 분석
-# 다중공선성에 의한 변수 삭제
-vif_model <- lm(`OECD` ~ ., data = df_vif)
-vif_value <- vif(vif_model) > 5
-df_vif <- df_vif[, vif_value]
+
 
 # df_vif이용 (다중공선성, 정규화 해결된 데이터)
 Country <- rownames(df_vif)
@@ -402,17 +397,21 @@ rownames(df_vif) <- df_vif[,28]
 df_vif <- df_vif[,-28] # Country 삭제
 df_vif$OECD <- as.numeric(df_vif$OECD)
 
+# 다중공선성에 의한 변수 삭제
+vif_model <- lm(`OECD` ~ ., data = df_vif)
+vif_value <- vif(vif_model) > 5
+df_vif <- df_vif[, !vif_value]
 
 
 df_log_reg <- glm(OECD ~ ., family = binomial, data = df_vif, maxit = 100) # 변수 초과에 의해 정답률이 1이 나온다.
-summary(df_log_reg) 
+summary(df_log_reg)
 
 df_log_reg_Null = glm(OECD ~ 1, family = binomial, data = df_vif, maxit = 100)
 summary(df_log_reg_Null)
 
 anova(df_log_reg_Null, df_log_reg, test="LRT")
 
-step_df_vif_log_reg <- step(null, scope=list(lower=df_log_reg_Null, upper=df_log_reg),
+step_df_vif_log_reg <- step(df_log_reg_Null, scope=list(lower=df_log_reg_Null, upper=df_log_reg),
                             direction="forward")
 summary(step_df_vif_log_reg)
 
@@ -450,7 +449,7 @@ mygroup = function (y,k=4){
   return(floor((z-1)/(count/k))+1)
 }
 df_vif_factor <- data.frame()
-df_vif_factor <- lapply(df, function(x){mygroup(x,10)})
+df_vif_factor <- lapply(df_vif, function(x){mygroup(x,10)})
 df_vif_factor <- as.data.frame(df_vif_factor)
 
 df_vif_factor$OECD <- ifelse(df_vif_factor$OECD == '6', 1, 0)
@@ -484,7 +483,8 @@ confusionMatrix(as.factor(df_test_pred),
                 as.factor(df_test_labels), 
                 positive = '1')
 
-
-
+# MSE 구하기
+pred = predict(df_regression, data=df)
+mse(df$`Birth rate`, pred)
 
 
