@@ -1,14 +1,27 @@
-# 출산률 - 국가적 차원에서의 고찰
-# 서론 
-## 우리의 궁극적 목표
+# 출산율 - 국가적 차원에서의 고찰  
+
+# 서론
+  유엔인구기금 2021년 세계 인구 현황 보고서 ‘내 몸은 나의 것’에 실린 통계표를 보면, 한국 여성 1명이 평생 낳을 것으로 예상되는 아이 수를 뜻하는 ‘합계 출산율’은 1.1명이다. 이렇게  한국의 저출산 문제와 인구 고령화가 심각해지면서 매년 저출산을 해결하기 위한 예산은 2006년부터 15년간 225조원을 들였지만 여전히 심각해져만 가고 있다. 또한 최근 2021년 1월 1일 기점으로 한국도 낙태법이 폐지되면서 낙태에 대한 처벌이 끝났다. 이번 한국의 낙태죄 폐지로 인해 출산율이 더 감소하는 것은 아닐까?하는 우려와 근심이 많이 제기되었다. 그렇다면 과연 어떤 요인이 출산율에 유의미하게 영향을 끼치는지, 우리나라의 저출산 해결 정책이 올바른 방향으로 가고 있는지 알아보고자 하였다.
+
+## 가설 
+1. 결혼 나이가 낮을수록 출산율이 높을 것이다. 
+2. 교육 수준이 낮을수록 출산율이 높을 것이다.  
+3. 자살률이 낮을수록 출산율이 높을 것이다.   
+4. 육아비용이 낮을수록 출산율이 높을 것이다.   
+5. 65세 이상 인구 비율이 낮을수록 출산율이 높을 것이다.  
+6. 지니계수가 낮을수록 출산율이 높을 것이다.   
+7. 행복지수가 높을수록 출산율이 높을 것이다.  
+8. 낙태 합법인 국가는 출산율이 낮을 것이다.  
+9. GDP가 낮을수록 출산율이 낮을 것이다.  
+10. 평등지수가 높을수록 출산율이 높을 것이다.  
 
 # 본론
 ## 1 데이터 전처리
+
 ### 1.1 필요 라이브러리 불러오기
-```{r}
+```{r, echo=FALSE}
 suppressMessages(library(tidyverse))
 suppressMessages(library(glmnet)) %>% suppressWarnings()
-suppressMessages(library(dplyr)) %>% suppressWarnings()
 suppressMessages(library(lm.beta)) %>% suppressWarnings()
 suppressMessages(library(XML)) %>% suppressWarnings()
 suppressMessages(library(httr)) %>% suppressWarnings()
@@ -24,10 +37,48 @@ suppressMessages(library(Metrics)) %>% suppressWarnings()
 suppressMessages(library(yardstick)) %>% suppressWarnings()
 suppressMessages(library(e1071)) %>% suppressWarnings()
 suppressMessages(library(descr)) %>% suppressWarnings()
+suppressMessages(library(syuzhet)) %>% suppressWarnings()
+suppressMessages(library(tidytext)) %>% suppressWarnings()
+suppressMessages(library(wordcloud)) %>% suppressWarnings()
+suppressMessages(library(tm)) %>% suppressWarnings()
+suppressMessages(library(RColorBrewer)) %>% suppressWarnings()
+suppressMessages(library(KoNLP)) %>% suppressWarnings()
+suppressMessages(library(ggplot2)) %>% suppressWarnings()
+suppressMessages(library(SentimentAnalysis)) %>% suppressWarnings()
+suppressMessages(library(NbClust)) %>% suppressWarnings()
 options(scipen = 1000)    # 옵션으로 숫자 형태 조절
 ```
 
 ### 1.2 데이터 불러오기
+우리는 전체 13곳에서 데이터를 모았다. 그 중 8개는 웹사이트에서 크롤링 하였고, 5개는 csv파일을 다운받아 사용하였다. 또한 수업 중 배운 R패키지를 통해 트위터 정보를 크롤링한 후, 저장한 뒤 사용하였다.
+  
+|변수명|설명|
+|:--:|:--:|
+|sex ratio|여자 백명당 남자 몇명|
+|gdp growth rate|연간 gdp 성장율|
+|gdp per capita|국민 1인당 gdp|
+|agriculture|농업 경제 % of GVA|
+|industry|산업 경제 % of GVA|
+|services and other activity|서비스 산업 % of GVA|
+|agriculture employed|농업 종사자 비율|
+|industry employed|산업 종사자 비율|
+|service employed|서비스 종사자 비율|
+|unemployed|실업자 비율|
+|agriculture production|농업 생산지수|
+|food production|식품 생산지수|
+|exports|수출|
+|imports|수입|
+|trade balance|무역수지|
+|urban population|도시 인구 비율|
+|refugees|1000명당 난민이나  UNHCR에서 고려해야할 사람 수|
+|infant mortality|유아 사망률|
+|health expenditure|건강에 쓰는 비용 % of GDP|
+|women politician|국회 여자 비율|
+|internet using|거주지 100 당 인터넷 쓰는 사람 수|
+|threatened species|멸종위기종수|
+|CO2 emission|이산화탄소 예상 배출량|
+|energy production|에너지 생산량|  
+
 ```{r, warning=FALSE}
 # 출산율
 url <- "https://worldpopulationreview.com/country-rankings/birth-rate-by-country"
@@ -213,6 +264,7 @@ colnames(df_oecd) <- c("Country", "OECD")
 ```
 
 ### 1.3 데이터 합치기, 이름바꾸기  
+우선 나라 이름을 기준으로 합쳐주었다. 한 나라에 대해서 다른 이름으로 된 나라들은 위에서 손수 바꿔주었다. 
 ```{r}
 df <- inner_join(df_gini, df_abortionlegal, by = 'Country')
 df <- inner_join(df, df_study, by = 'Country')
@@ -244,6 +296,9 @@ colnames(df)[13:58] <- c("surface area", "population in thousands", "population 
 ```
 
 ### 1.4 데이터 변형
+데이터들의 scale이 서로 다르기 때문에 모두 표준편차가1, 평균이 0인 상태로 만들어 주었다.  
+또한 본격적인 회귀분석에 앞서, 다중공선성 문제를 해결해 주기 위해 `Birth rate`를 종속변수로 하여 회귀분석을 한 뒤 다중공선성 문제가 있는 변수들을 삭제해 주었다.
+
 ```{r, warning=FALSE}
 # 낙태 합법 변수 재부호화
 df$legal <- ifelse(df$legal == 'yes', 1, 0)
@@ -277,13 +332,13 @@ vif_model <- lm(`Birth rate` ~ ., data = df_std)
 vif_value <- vif(vif_model) > 5
 df_vif <- df_std[, vif_value]
 
-corrplot::corrplot(cor(df_vif))
-# 다중공선성 확인 그래프 하나 추가
 ```
 
 ## 2 국가별 출산율 분석
-### 2.1 다중선형 회귀분석
-전진 선택법 사용하여 AIC가 낮아지는 쪽으로 변수를 선택하는 방법이다.
+출산율은 연속적인 값이기 때문에 우리는 종속변수를 `Birth rate`로 한 뒤 다중선형 회귀 분석을 진행하였다.    
+
+### 2.1 다중선형 회귀분석  
+전진 선택법 사용하여 AIC가 낮아지는 쪽으로 변수를 선택하는 방법이다.  전진선택법을 통해 유의미한 변수들을 찾아보았다.
 ```{r, results='hide'}
 df_regression <- lm(`Birth rate` ~ ., data=df_vif)
 df_regression_null <- lm(`Birth rate` ~ 1, data=df_vif)
@@ -293,11 +348,12 @@ step_df <- step(df_regression_null, scope=list(lower=df_regression_null, upper=d
 ```
 ```{r}
 summary(step_df) # 요약본 보기
-round(lm.beta(step_df), 3)    # 표준화 계수확인 
+round(lm.beta(step_df), 3)    # 계수확인 
 ```
-
+모델을 보니 P값이 매우 낮으니, 유의미한 회귀 모델이다. AIC를 낮추는데 유의미한 변수는 5가지고, 회귀적으로 유의미한 변수는 4가지였다. 이 모델은 전체 데이터의 약 80%가량을 설명한다. 노인율과 산업고용율과 지니계수는 낮을 수록 출산율이 높았고, 유아 사망율은 높을 수록 출산율이 높았다. 유아사망율이 낮고, 산업고용율이 낮은 것은 개발도상국일 확률이 높다. 따라서 이들은 1차산업에 종사한 사람이 많기 때문에 노동력을 상승시키기 위해 더 많은 아를 낳는 것일 가능성이 있다. 따라서 인과관계는 없는것으로 생각된다. 또한 노인율 또한 인구구조 특성상 출산율이 높은 나라가 노인율이 작은 것이 대부분이다. 따라서 마찬가지로 인과관계는 없는 것으로 판단된다. 하지만 지니계수(소득불평등)가 낮을 수록 출산율이 높은 것은 빈부격차가 작을 수록 누구나 아이를 키우는데 힘들지 않기 때문에 출산율이 높은 것으로 볼 수 있다. 따라서 인과관계가 있을 수 있따. 더 자세한 결론은 밑에 결론부분에서 하겠다.
 
 ### 2.2 검증
+회귀분석 결과를 신뢰할 수 있는지에 대한 검증을 시행하였다. 1번 그림은 다중공선성 문제를 살펴본 것이다. 결과는 문제가 없었다. 2번째는 qq곡선을 통해 정규성을 만족하는 지 여부를 본 것이다. 정규성을 만족한다고 볼 수 있다. 또한 세번째도 정규성을 검증하는 것이다. 마찮가지로 만족한다. 네 번째는 잔차들의 분포를 나타낸 것이다. 잔차들의 분포가 특정 모습을 띄지 않으므로, 본 회귀분석을 신뢰할 수 있다. 
 ```{r}
 vif(step_df) # 다중공선성 확인
 
@@ -334,28 +390,25 @@ r2.min.elastic     # elestic 모델에서 최적의 R-squared값
 step_df_mse <- sum( (step_df$residuals)^2 )/nrow(df_vif)
 step_df_mse
 ```
+결과적으로 보면 수치상 전진선택법의 모델이 mse값과 R^2값이 더 좋았지만, 모델의 복잡도 측면에서 본다면 위의 모델도 의미가 있는 모델이다. 
 
 ### 2.4 Twitter 분석
-```{r}
+```{r setup, include=FALSE}
 #install.packages("remotes")
 #remotes::install_github("haven-jeon/KoNLP", upgrade = "never", INSTALL_opts = c("--no-multiarch"))
 library(syuzhet)
 library(tidytext)
 library(wordcloud)
 library(tm)
-library(stringr)
-library(rtweet)
-library(dplyr)
-library(twitteR)
 library(dplyr)
 library(RColorBrewer)
 library(KoNLP)
-library(SnowballC)
 library(ggplot2)
 library(SentimentAnalysis)
 library(tidyverse)
 useSejongDic()
-
+```
+```{r, warning=F}
 #source(file = "TwitterAPIKey.R", echo = FALSE)
 
 #childbirth <- enc2utf8("childbirth")
@@ -378,13 +431,14 @@ wordCorpus <- tm_map(wordCorpus, removeNumbers)
 wordCorpus <- tm_map(wordCorpus, removeWords, c("amp"))
 wordCorpus <- tm_map(wordCorpus, removeWords, c("childbirth"))
 wordCorpus <- tm_map(wordCorpus, removeWords, c("nhs", "realdonaldtrump", "tcoqzrnig"))
-wordCorpus[[1]]$content
-
+#wordCorpus[[1]]$content
+```
+```{r, warning=F}
 pal <- brewer.pal(8, "Dark2")
 wordcloud(words=wordCorpus, scale=c(4,0.5), max.words = 300,
           random.order = F, rot.per=0.35, use.r.layout = F, min.freq = 50, colors=pal)
-
-
+```
+```{r}
 encodesentiment <- function(x) {
   if(x <= -1){
     "1) very negative"
@@ -402,7 +456,8 @@ encodesentiment <- function(x) {
 tweetsentiment <- get_sentiment(data$text, method= "syuzhet")
 tweets <- cbind(data, tweetsentiment)
 tweets$Sentiments <- sapply(tweets$tweetsentiment, encodesentiment)
-
+```
+```{r, warning=F}
 qplot(tweets$tweetsentiment) + theme(legend.position = "none")+
   xlab("sentiment score") + ylab("number of tweets") +
   ggtitle("childbirth tweets by sentiment score")
@@ -412,10 +467,8 @@ ggplot(tweets, aes(Sentiments)) +
   theme(legend.position = "none", axis.title = element_blank())+
   ylab("number of tweets") +
   ggtitle("tweets about childbirth")
-
-
-# =============================================
-
+```
+```{r, warning=F}
 #parenting <- enc2utf8("parenting")
 #data2 <- search_tweets(parenting, n=10000, lang="en")
 #data2 <- unique(data2)
@@ -437,16 +490,14 @@ wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("parenting"))
 wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("tcolukpux", "yoongi"))
 wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("httpstcolukpux"))
 wordCorpus2 <- tm_map(wordCorpus2, removeWords, c("amp"))
-wordCorpus2[[1]]$content
-
-
+#wordCorpus2[[1]]$content
+```
+```{r, warning=F}
 set.seed(1234)
 wordcloud(words=wordCorpus2, scale=c(4,0.5), max.words = 200,
           random.order = F, rot.per=0.35, use.r.layout = F, min.freq = 10, colors=pal)
-
-
-# 감정분석 
-
+```
+```{r, warning=F}
 tweetsentiment2 <- get_sentiment(data2$text, method= "syuzhet")
 tweets2 <- cbind(data2, tweetsentiment2)
 tweets2$Sentiments2 <- sapply(tweets2$tweetsentiment2, encodesentiment)
@@ -460,11 +511,8 @@ ggplot(tweets2, aes(Sentiments2)) +
   theme(legend.position = "none", axis.title = element_blank())+
   ylab("number of tweets") +
   ggtitle("tweets about parenting")
-
-
-# =====================================================
-
-
+```
+```{r,warning=F}
 #childbirth_k <- enc2utf8("출산")
 #Kdata <- search_tweets(childbirth_k, n=10000, lang="ko")
 #Kdata <- unique(Kdata)
@@ -496,13 +544,13 @@ Kdata_word <- gsub("그래서", "", Kdata_word)
 Kdata_word <- gsub("그걸", "", Kdata_word)
 
 head(Kdata_word)
-
+```
+```{r, warning=F}
 set.seed(1234)
 wordcloud(words=Kdata_word, scale=c(5,0.5),
           min.freq = 30, random.order = F, max.words=200, family="AppleGothic", colors=pal)
-
-# 감정분석 
-
+```
+```{r, warning=F}
 senti_words_kr <- readr::read_delim("https://raw.githubusercontent.com/park1200656/KnuSentiLex/master/SentiWord_Dict.txt", delim='\t', col_names=c("term", "score"))
 head(senti_words_kr)
 
@@ -536,9 +584,8 @@ ggplot(df_final, aes(x = KoreanSentiment)) +
   geom_bar(stat = "count", width = 0.7, fill = "orange") + 
   theme_minimal() + ggtitle("tweets about childbirth in korea")
 
-# ===================================================
-
-
+```
+```{r, warning=F}
 #childcare_k <- enc2utf8("육아")
 #Kdata2 <- search_tweets(childcare_k, n=10000, lang="ko")
 #Kdata2 <- unique(Kdata2)
@@ -573,16 +620,17 @@ Kdata_word2 <- gsub("그거", "", Kdata_word2)
 Kdata_word2 <- gsub("갖다대니까", "", Kdata_word2)
 Kdata_word2 <- gsub("하게", "", Kdata_word2)
 
+```
+```{r, warning=F}
 set.seed(1234)
 wordcloud(words=Kdata_word2, scale=c(4,0.5),
           min.freq = 40, random.order = F, max.words=200, family="AppleGothic", colors=pal)
-
-
-# 감정분석 
+```
+```{r, warning=F}
 res_sentiment2 <- analyzeSentiment(Kdata_word2,
-                                  language="korean",
-                                  rules=list("KoreanSentiment"=list(ruleSentiment, senti_dic_kr)),
-                                  removeStopwords = F, stemming = F)
+                                   language="korean",
+                                   rules=list("KoreanSentiment"=list(ruleSentiment, senti_dic_kr)),
+                                   removeStopwords = F, stemming = F)
 
 df2 <- data.frame(res_sentiment2, Kdata_word2)
 df2 <- df2[!(df2$Kdata_word2==""),]
@@ -608,17 +656,11 @@ ggplot(df2_final, aes(x = KoreanSentiment)) +
   theme_minimal() + ggtitle("tweets about parenting in korea")
 ```
 
-### 2.5 결론
-분석방법으로 전진선택법과 Elasticnet방법을 사용해 보았다. 전진선택법은 AIC가 낮아지는 쪽을 선택하는 방법이다. 반면에 Elasticnet방법은 모델의 효율성도 생각하는 모델이다. 우리가 살펴본 수치상으론 전진선택법이 더 우수했다. 여기선 전진 선택법의 여러 지표들을 통합해서 알아보겠다.
-```{r}
-tab_model(step_df, show.se = T, show.ci = F, show.stat= T, auto.label = F)
-plot_model(step_df, sort.est = T, type = "est", wrap.labels=5)
-
-```
-
-
 ## 3 OECD 회원국 분석
-### 3.1 로지스틱 회귀분석
+ OECD는 특정한 가입 조건이 명시되어 있지는 않다. 하지만 OECD에 가입하려면 OECD 소속국 간의 허가를 받아야 속할 수 있다. 그래서 우리는 OECD 소속 국가만의 특징이 있을지 궁금해 졌다. 따라서 우리는 로지스틱 회귀분석으로 OECD국의 특징에 대해 알아보고자 한다.  
+ 
+### 3.1 로지스틱 회귀분석  
+OECD국가 일때 1이며 아닐때 0이다. 종속변수를 OECD국가로 한 뒤 로지스틱 회귀분석을 실시하였다.
 ```{r, results='hide'}
 Country <- rownames(df_vif)
 df_vif <- cbind(df_vif, Country)
@@ -649,6 +691,9 @@ summary(step_df_vif_log_reg)
 exp(coef(step_df_vif_log_reg))      # 계수를 살펴본다 
 vif(step_df_vif_log_reg)            # 다중공선성 확인
 ```
+로지스틱 결과 위에서 본 회귀계수는 오즈비이다(odds의 비율). 즉 OECD 국가가 더 선진국에 가까운 모습이 보인다.   
+GDP가 높고, 행복도가 높고, 산업고용율이 높을 수록 OECD일 확률이 높다.
+
 #### 3.1.1 모델 평가
 ```{r}
 df_log_reg_graph <- ROC(form = `OECD` ~ `old ratio`+
@@ -730,4 +775,47 @@ confusionMatrix(as.factor(df_test_pred_modify),
                 positive = '1')
 ```
 
-# 결론
+### 3.3 군집화 
+위에서 구한 유의미한 변수들만 뽑아 군집화를 진행하였다.
+```{r, warning=FALSE, error=FALSE, fig.height=5, fig,width=100}
+library(NbClust)
+# 위계적 군집분석 방법
+df.scaled <- df_std[,c(17, 4, 31, 5, 36, 22, 24)] # 앞에서 유의미한 결과로 나온 열 선택
+#거리 계산
+dfDist <- dist(df.scaled, method = "euclidean")
+
+# 다섯가지 옵션 중 이게 가장 예쁘게 나뉘어졌다.
+hc <- hclust(dfDist, method = "ward.D2")
+plot(hc, hang = -1, cex=.5, main = "Ward Method")
+
+devAskNewPage(ask = T) #새화면 나오기 전에 사용자 대기
+nc <- NbClust(df.scaled, distance = "euclidean", min.nc = 2,
+              max.nc = 15, method = "ward.D2")
+
+devAskNewPage(ask = F)
+par(mfrow = c(1,1))
+table(nc$Best.nc[1,]) #각종 추천 알고리즘 결과 요약
+
+
+cl.Num <- 2 # 세 개의 군집으로 분류
+hc.result = cutree(hc, k=cl.Num)
+table(hc.result) # 군집별 데이터 개수 확인
+
+#군집 결과 시각화
+plot(hc, hang=-1, cex=.5, main="Ward Method")
+rect.hclust(hc, k=cl.Num) # plot 함수로 시각화 , 지표의 추천 클러스터 개수를 지정
+
+# 군집 결과 시각화2 (using MDS)
+mmds2.out <- cmdscale(dfDist)
+plot(mmds2.out, type = "n")
+text(mmds2.out, rownames(mmds2.out), col = hc.result)
+
+# 군집의 특징 확인
+aggregate(df.scaled, by=list(cluster=hc.result), mean)
+```
+
+# 결론 
+ 다중 선형 회귀 분석 결과 출산율에 영향을 미치는 변수 4개를 찾아냈다. **‘65세 이상 노인 비율’, ‘유아 사망률’, ‘산업 고용률’, ‘지니 계수(소득 불평등 지수)’**가 출산율에 영향을 끼쳤다. **노인 비율과 산업 고용률, 지니 계수**가 낮을수록 출산율이 높았고 **유아사망률**이 높을수록 출산율이 높았다. 분석 전 우리는 **성차별 격차 지수나 양육 비용**과 같은 변수가 출산율에 영향을 끼칠 것이라 예상했지만 기대와 달리 이들은 **무의미한 변수**라는 것을 알 수 있었다. 결과 중 **지니계수**를 보면 빈부격차가 적을수록 출산율이 높아지기 때문에 출산율이 높아지려면 **소득불평등**을 줄이는 것이 근본적인 해결책이다. 정책적 방면으로는 근시안적인 양육비 지원 정책보다 고소득층~저소득층 모두가 살기 좋은 나라를 만드는 정책을 수립한다면, 자연스럽게 한국의 저출산도 해결될 것으로 예측된다. 또한 트위터 분석 결과 우리나라의 사람들은 영어권의 사람보다 **출산**과 **육아**에 대해 더 부정적인 반응을 갖고 있었다. 따라서 국가적 차원에서 출산과 육아에 대한 인식을 긍정적으로 바꿀 필요가 있다.  
+ 
+ 또한 우리는 선진국들이 가입한 다고 알고 있는 **OECD국가**에 대해 알아보았다. 어느 나라나 가입할 수 있는 명목상의 가입 조건과는 다르게 암묵적인 조건이 있는 듯하다. 대부분의 지표에서 **확연한 차이**가 보였다. 또한 유의미한 차이가 있는 조건들을 가지고 군집화를 해보았지만 OECD국가들이 군집화 되지는 않았고, 대부분의 유럽나라들이 분리되었다. 또한 분리된 결과를 보니 유럽 국가가 GDP가 높았고, 노인율이 높았고, 행복지수가 높았고, 실업율이 낮은 등의 **선진국**이라고 불릴만한 지표들이었다. 
+

@@ -1,14 +1,7 @@
-# 출산률 - 국가적 차원에서의 고찰
-# 서론 
-## 우리의 궁극적 목표
 
-# 본론
-## 1 데이터 전처리
-### 1.1 필요 라이브러리 불러오기
-```{r}
+```{r, echo = False}
 suppressMessages(library(tidyverse))
 suppressMessages(library(glmnet)) %>% suppressWarnings()
-suppressMessages(library(dplyr)) %>% suppressWarnings()
 suppressMessages(library(lm.beta)) %>% suppressWarnings()
 suppressMessages(library(XML)) %>% suppressWarnings()
 suppressMessages(library(httr)) %>% suppressWarnings()
@@ -24,6 +17,14 @@ suppressMessages(library(Metrics)) %>% suppressWarnings()
 suppressMessages(library(yardstick)) %>% suppressWarnings()
 suppressMessages(library(e1071)) %>% suppressWarnings()
 suppressMessages(library(descr)) %>% suppressWarnings()
+suppressMessages(library(syuzhet)) %>% suppressWarnings()
+suppressMessages(library(tidytext)) %>% suppressWarnings()
+suppressMessages(library(wordcloud)) %>% suppressWarnings()
+suppressMessages(library(tm)) %>% suppressWarnings()
+suppressMessages(library(RColorBrewer)) %>% suppressWarnings()
+suppressMessages(library(KoNLP)) %>% suppressWarnings()
+suppressMessages(library(ggplot2)) %>% suppressWarnings()
+suppressMessages(library(SentimentAnalysis)) %>% suppressWarnings()
 options(scipen = 1000)    # 옵션으로 숫자 형태 조절
 ```
 
@@ -277,68 +278,6 @@ vif_model <- lm(`Birth rate` ~ ., data = df_std)
 vif_value <- vif(vif_model) > 5
 df_vif <- df_std[, vif_value]
 
-corrplot::corrplot(cor(df_vif))
-# 다중공선성 확인 그래프 하나 추가
-```
-
-## 2 국가별 출산율 분석
-### 2.1 다중선형 회귀분석
-전진 선택법 사용하여 AIC가 낮아지는 쪽으로 변수를 선택하는 방법이다.
-```{r, results='hide'}
-df_regression <- lm(`Birth rate` ~ ., data=df_vif)
-df_regression_null <- lm(`Birth rate` ~ 1, data=df_vif)
-
-step_df <- step(df_regression_null, scope=list(lower=df_regression_null, upper=df_regression),
-                direction="forward")
-```
-```{r}
-summary(step_df) # 요약본 보기
-round(lm.beta(step_df), 3)    # 표준화 계수확인 
-```
-
-
-### 2.2 검증
-```{r}
-vif(step_df) # 다중공선성 확인
-
-# sjplot
-set_theme(axis.title.size = 1.0, axis.textsize = 1.0)
-plot_model(step_df, type = "diag", wrap.labels=5)
-par(mfrow = c(2,2))# plot 4개를 동시에 표시하기 위함
-plot(step_df)
-par(mfrow = c(1,1))
-```
-
-### 2.3 Elasticnet 분석
-glmnet이라는 패키지를 이용하면, 단순히 정규화 뿐만 아니라 모델의 복잡도도 고려하여 회귀 모델을 만들 수 있다.
-그래서 이번엔 elastic을 이용해 보겠다.
-```{r}
-set.seed(123) # 시드설정 
-df_elastic <- cv.glmnet(as.matrix(df_vif[,-7]),
-                        df_vif$`Birth rate`,
-                        family = "gaussian", alpha = .5,
-                        nfolds = 4, type.measure = "mse")
-
-plot(df_elastic)      # 최적의 lambda값 확인
-log(df_elastic$lambda.min)     # MSE가 가장 작을때의 lambda
-log(df_elastic$lambda.1se)     # 가장 작을때 1표준편차 안에서 가장 간결한 모델일 때 lambda.
-plot(df_elastic$glmnet.fit, xvar = "lambda")   # 변수가 추가될 때마다 모수 추정값의 변화를 볼 수 있다.
-coef.elastic <- coef(df_elastic, s = "lambda.min")[,1] 
-coef.elastic       # 계수확인 
-mse.min.elastic <- df_elastic$cvm[df_elastic$lambda == df_elastic$lambda.min]
-mse.min.elastic    # elestic 모델에서 최적의 mse값
-r2.min.elastic <- df_elastic$glmnet.fit$dev.ratio[df_elastic$lambda == df_elastic$lambda.min]
-r2.min.elastic     # elestic 모델에서 최적의 R-squared값 
-
-# step_df 모델 수치
-step_df_mse <- sum( (step_df$residuals)^2 )/nrow(df_vif)
-step_df_mse
-```
-
-
-## 3 OECD 회원국 분석
-### 3.1 로지스틱 회귀분석
-```{r, results='hide'}
 Country <- rownames(df_vif)
 df_vif <- cbind(df_vif, Country)
 df_vif <- left_join(df_vif, df_oecd, by='Country')
@@ -351,102 +290,43 @@ df_vif$OECD <- as.numeric(df_vif$OECD)
 vif_model <- lm(`OECD` ~ ., data = df_vif)
 vif_value <- vif(vif_model) > 10
 df_vif_modify <- df_vif[, !vif_value]
-
-df_log_reg <- glm(`OECD` ~ ., family = binomial, data = df_vif_modify, maxit = 100) # 변수 초과에 의해 정답률이 1이 나온다.
-summary(df_log_reg)
-
-df_log_reg_Null = glm(OECD ~ 1, family = binomial, data = df_vif_modify, maxit = 100)
-summary(df_log_reg_Null)
-
-# anova(df_log_reg_Null, df_log_reg, test="LRT")
-
-step_df_vif_log_reg <- step(df_log_reg_Null, scope=list(lower=df_log_reg_Null, upper=df_log_reg),
-                            direction="forward")
-```
-```{r}
-summary(step_df_vif_log_reg)
-exp(coef(step_df_vif_log_reg))      # 계수를 살펴본다 
-vif(step_df_vif_log_reg)            # 다중공선성 확인
-```
-#### 3.1.1 모델 평가
-```{r}
-df_log_reg_graph <- ROC(form = `OECD` ~ `old ratio`+
-                          `infant mortality rate`+
-                          `industry employed`+
-                          `gini_score`+
-                          `Women suicide`,
-                        data = df_vif_modify,
-                        plot = "ROC")
-
-df_log_reg_graph$res[round(df_log_reg_graph$res$lr.eta,3) == 0.674,]
-df_log_reg_graph$AUC 
-df_log_reg_graph$lr
-
-# caret
-confusionMatrix(
-  as.factor(ifelse(predict(step_df_vif_log_reg, type = "response")>0.674,1,0)),
-  as.factor(df_log_reg$y),
-  positive = '1')
-
-F1_score <- 2*(0.9643*0.8710)/(0.9643+0.8710)
-F1_score
 ```
 
-### 3.2 나이브 베이즈
-```{r}
-# 그룹화 함수
-mygroup = function (y,k=4){
-  count = length(y)
-  z = rank(y,ties.method = "min")
-  return(floor((z-1)/(count/k))+1)
-}
-df_vif_factor <- data.frame()
-df_vif_factor <- lapply(df_vif, function(x){mygroup(x,10)}) # 각각 10개씩 그룹으로 나눈다.
-df_vif_factor <- as.data.frame(df_vif_factor)
 
-df_vif_factor$OECD <- ifelse(df_vif_factor$OECD == '6', 1, 0)  # 종속도 변하기 때문에 다시 바꿔준다
+### 4 군집화 
+```{r, warning=FALSE, error=FALSE, fig.height=5, fig,width=100}
+library(NbClust)
+# 위계적 군집분석 방법
+df.scaled <- df_std[,c(17, 4, 31, 5, 36, 22, 24)] # 앞에서 유의미한 결과로 나온 열 선택
+#거리 계산
+dfDist <- dist(df.scaled, method = "euclidean")
 
-# 데이터 분할
-train_idx = sample(73, 73*3/4)      
-df_train = df_vif_factor[train_idx,]
-df_test = df_vif_factor[-train_idx,]
-df_train_labels = df_vif_factor[train_idx,]$OECD
-df_test_labels = df_vif_factor[-train_idx,]$OECD
+# 다섯가지 옵션 중 이게 가장 예쁘게 나뉘어졌다.
+hc <- hclust(dfDist, method = "ward.D2")
+plot(hc, hang = -1, cex=.5, main = "Ward Method")
+
+devAskNewPage(ask = T) #새화면 나오기 전에 사용자 대기
+nc <- NbClust(df.scaled, distance = "euclidean", min.nc = 2,
+              max.nc = 15, method = "ward.D2")
+
+devAskNewPage(ask = F)
+par(mfrow = c(1,1))
+table(nc$Best.nc[1,]) #각종 추천 알고리즘 결과 요약
 
 
-df_train = df_train[,-length(df_train)] # OECD 열을 삭제
+cl.Num <- 2 # 세 개의 군집으로 분류
+hc.result = cutree(hc, k=cl.Num)
+table(hc.result) # 군집별 데이터 개수 확인
 
-prop.table(table(df_train_labels))
-prop.table(table(df_test_labels))
-# 비슷하다.
+#군집 결과 시각화
+plot(hc, hang=-1, cex=.5, main="Ward Method")
+rect.hclust(hc, k=cl.Num) # plot 함수로 시각화 , 지표의 추천 클러스터 개수를 지정
 
-# 모델 생성
-df_classifier = naiveBayes(df_train, df_train_labels)
+# 군집 결과 시각화2 (using MDS)
+mmds2.out <- cmdscale(dfDist)
+plot(mmds2.out, type = "n")
+text(mmds2.out, rownames(mmds2.out), col = hc.result)
+
+# 군집의 특징 확인
+aggregate(df.scaled, by=list(cluster=hc.result), mean)
 ```
-
-#### 3.2.1 모델 평가
-```{r}
-df_test_pred = predict(df_classifier, df_test)
-
-CrossTable(df_test_pred, df_test_labels,
-           prop.chisq = F, prop.c = F, prop.r = FALSE,
-           dnn = c('predicted', 'actual'))
-
-confusionMatrix(as.factor(df_test_pred),
-                as.factor(df_test_labels), 
-                positive = '1')
-
-# 모델 개선형
-df_classifier_modify <- naiveBayes(df_train, df_train_labels, laplace = 1)
-df_test_pred_modify = predict(df_classifier_modify, df_test)
-
-CrossTable(df_test_pred_modify, df_test_labels,
-           prop.chisq = F, prop.c = F, prop.r = FALSE,
-           dnn = c('predicted', 'actual'))
-
-confusionMatrix(as.factor(df_test_pred_modify),
-                as.factor(df_test_labels), 
-                positive = '1')
-```
-
-# 결론
